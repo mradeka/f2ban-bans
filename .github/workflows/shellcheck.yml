@@ -1,0 +1,20 @@
+name: ShellCheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Lint main script
+        run: shellcheck f2ban-bans
+
+      - name: Lint completion script
+        run: shellcheck -s bash f2ban-bans-completion.bash

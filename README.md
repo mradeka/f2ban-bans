@@ -1,207 +1,254 @@
 # f2ban-bans
 
-Ein Bash-Script zum Anzeigen, Filtern und Entsperren gesperrter IPs über alle
-fail2ban-Jails hinweg – inklusive Bash-Tab-Completion für Jail-Namen.
+[![ShellCheck](https://github.com/mradeka/f2ban-bans/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/mradeka/f2ban-bans/actions/workflows/shellcheck.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
+[![Shell: Bash](https://img.shields.io/badge/shell-bash-4EAA25?logo=gnubash&logoColor=white)](https://www.gnu.org/software/bash/)
+[![Platform: Linux](https://img.shields.io/badge/platform-linux-informational?logo=linux&logoColor=white)](#requirements)
+[![Last commit](https://img.shields.io/github/last-commit/mradeka/f2ban-bans)](https://github.com/mradeka/f2ban-bans/commits/main)
+[![Issues](https://img.shields.io/github/issues/mradeka/f2ban-bans)](https://github.com/mradeka/f2ban-bans/issues)
 
-## Inhalt des Pakets
+> 🇩🇪 Deutsche Version: [README.de.md](README.de.md)
 
-| Datei                         | Zweck                                              |
-|--------------------------------|-----------------------------------------------------|
-| `f2ban-bans`                   | Das eigentliche Script (nach `/usr/local/sbin/`)    |
-| `f2ban-bans-completion.bash`   | Bash-Completion (nach `/etc/bash_completion.d/`)    |
-| `README.md`                    | Diese Dokumentation                                 |
+A Bash script to list, filter, and unban banned IPs across all fail2ban
+jails at once - including Bash tab completion for jail names.
 
-## Voraussetzungen
+## Table of contents
 
-- Linux mit `bash`
-- `fail2ban` installiert und `fail2ban-client` im `$PATH`
-- root-Rechte (`fail2ban-client` erfordert das)
-- optional: Paket `bash-completion` für die automatische Tab-Vervollständigung
+- [Package contents](#package-contents)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [How it works / features](#how-it-works--features)
+- [Troubleshooting](#troubleshooting)
+- [Uninstall](#uninstall)
+- [Changelog](#changelog)
+- [License](#license)
+
+## Package contents
+
+| File                         | Purpose                                               |
+|------------------------------|-------------------------------------------------------|
+| `f2ban-bans`                 | The script itself (goes into `/usr/local/sbin/`)      |
+| `f2ban-bans-completion.bash` | Bash completion (goes into `/etc/bash_completion.d/`) |
+| `README.md`                  | This documentation (English)                          |
+| `README.de.md`               | German documentation                                  |
+| `CHANGELOG.md`               | Version history                                       |
+| `LICENSE.md`                 | GNU General Public License v3.0                       |
+
+## Requirements
+
+- Linux with `bash` (4.0 or newer; the completion uses `mapfile`)
+- `fail2ban` installed, with `fail2ban-client` on `$PATH`
+- root privileges (`fail2ban-client` requires it)
+- optional: the `bash-completion` package, for automatic tab completion
 
 ## Installation
 
-### 1. Hauptscript installieren
+### 0. Get the code
 
 ```bash
-sudo cp f2ban-bans /usr/local/sbin/f2ban-bans
-sudo chmod 750 /usr/local/sbin/f2ban-bans
-sudo chown root:root /usr/local/sbin/f2ban-bans
+git clone https://github.com/mradeka/f2ban-bans.git
+cd f2ban-bans
 ```
 
-`/usr/local/sbin` liegt normalerweise im `$PATH` von root, danach ist das
-Script einfach als `f2ban-bans` von überall aufrufbar.
-
-### 2. Tab-Completion installieren (optional, aber empfohlen)
+### 1. Install the main script
 
 ```bash
-sudo cp f2ban-bans-completion.bash /etc/bash_completion.d/f2ban-bans
-source /etc/bash_completion.d/f2ban-bans   # für die aktuelle Session
+sudo install -o root -g root -m 750 f2ban-bans /usr/local/sbin/f2ban-bans
 ```
 
-Für neue Shells wird die Datei automatisch geladen, sofern das Paket
-`bash-completion` installiert ist:
+`/usr/local/sbin` is normally on root's `$PATH`, so afterwards the script
+can simply be called as `f2ban-bans` from anywhere.
+
+### 2. Install tab completion (optional, but recommended)
+
+```bash
+sudo install -o root -g root -m 644 f2ban-bans-completion.bash /etc/bash_completion.d/f2ban-bans
+source /etc/bash_completion.d/f2ban-bans   # for the current session
+```
+
+New shells will load it automatically, provided the `bash-completion`
+package is installed:
 
 ```bash
 # Debian/Ubuntu
 apt install bash-completion
 
 # RHEL/CentOS/SUSE
-dnf install bash-completion    # bzw. zypper install bash-completion
+dnf install bash-completion    # or: zypper install bash-completion
 ```
 
-**Wichtig:** Achte darauf, wirklich `f2ban-bans-completion.bash` (nicht das
-Hauptscript `f2ban-bans`) unter diesem Pfad abzulegen. Siehe
-[Troubleshooting](#troubleshooting) für die Folgen einer Verwechslung.
+**Important:** make sure you actually place `f2ban-bans-completion.bash`
+(not the main script `f2ban-bans`) at this path. See
+[Troubleshooting](#troubleshooting) for what happens if you mix them up.
 
-### 3. Installation prüfen
+### 3. Verify the installation
 
 ```bash
 f2ban-bans -l
 complete -p f2ban-bans
 ```
 
-Die zweite Zeile sollte `complete -F _f2ban_bans_completion f2ban-bans`
-ausgeben (nicht `_minimal`).
+The second line should print `complete -F _f2ban_bans_completion
+f2ban-bans` (not `_minimal`).
 
-## Benutzung
+## Usage
 
 ```
-Verwendung: f2ban-bans [-p Muster] [-j Jail] [-c] [-l] [-u IP] [-h]
+Usage: f2ban-bans [-p pattern] [-j jail] [-c] [-l] [-u IP] [-h]
 
-  -p MUSTER    Gesperrte IPs per Regex filtern, z. B. '^92\.' oder '92.*'
-  -j JAIL      Nur diese Jail statt aller Jails anzeigen/verwenden
-  -c           Nur die Anzahl gesperrter IPs pro Jail ausgeben
-  -l           Nur die aktiven Jails auflisten und beenden
-  -u IP        Diese IP entsperren (alle Jails, oder nur -j Jail)
-  -h           Diese Hilfe anzeigen
+  -p PATTERN   Filter banned IPs by regex, e.g. '^92\.' or '92.*'
+  -j JAIL      Only show/use this jail instead of all jails
+  -c           Show only the number of banned IPs per jail
+  -l           Only list active jails, then exit
+  -u IP        Unban this IP (all jails, or only -j jail)
+  -h           Show this help
 ```
 
-### Beispiele
+### Examples
 
 ```bash
-# Alle gesperrten IPs, gruppiert nach Jail
+# All banned IPs, grouped by jail
 f2ban-bans
 
-# Aktive Jails auflisten (z. B. zur Auswahl für -j)
+# List active jails (e.g. to pick one for -j)
 f2ban-bans -l
 
-# Nach Muster filtern – Präfix reicht
+# Filter by pattern - a prefix is enough
 f2ban-bans -p 92.
 
-# Shell-Style-Muster wird automatisch in Regex umgewandelt
+# Shell-style pattern is auto-converted to regex
 f2ban-bans -p '92.*'
 
-# Volle Regex ist ebenfalls möglich
+# A full regex works too
 f2ban-bans -p '^92\.(1[0-9]|2[0-5])\.'
 
-# Nur eine bestimmte Jail anzeigen
+# Show only a specific jail
 f2ban-bans -j sshd
 
-# Jail + Muster kombinieren
+# Combine jail + pattern
 f2ban-bans -j sshd -p 92.
 
-# Nur die Anzahl gesperrter IPs pro Jail (+ Gesamtsumme)
+# Show only the count per jail (plus a grand total)
 f2ban-bans -c
 
-# IP aus allen Jails entsperren, in denen sie gesperrt ist
+# Unban an IP from every jail it's currently banned in
 f2ban-bans -u 92.1.2.3
 
-# IP nur aus einer bestimmten Jail entsperren
+# Unban an IP from a specific jail only
 f2ban-bans -u 92.1.2.3 -j sshd
 ```
 
-### Tab-Completion
+### Example output
 
-Nach der Installation der Completion-Datei:
+```
+=== sshd (3) ===
+92.9.1.1
+92.10.1.1
+92.118.39.77
+```
+
+Note the numeric ordering: `92.9.x` sorts before `92.10.x`.
+
+### Tab completion
+
+Once the completion file is installed:
 
 ```bash
 f2ban-bans -j <TAB><TAB>
 ```
 
-listet die aktuell aktiven Jail-Namen zur Auswahl auf.
+lists the currently active jail names to choose from.
 
-## Funktionsweise / Eigenschaften
+## How it works / features
 
-- **Aggregation über alle Jails**: fragt `fail2ban-client status` ab, um die
-  Jail-Liste zu ermitteln, und anschließend `fail2ban-client status <jail>`
-  je Jail für die gebannten IPs.
-- **Sortierung & Deduplizierung**: die Ausgabe wird numerisch nach
-  IP-Oktetten sortiert (`92.9.x` vor `92.10.x`) und doppelte Einträge
-  werden entfernt.
-- **Farbige Ausgabe**: nur aktiv, wenn stdout ein Terminal ist (kein
-  ANSI-Code-Müll bei Umleitung in Dateien oder Pipes).
-- **Muster-Filterung**: `-p` akzeptiert reguläre Ausdrücke (POSIX ERE).
-  Ein einfaches Shell-Muster mit `*` am Ende (z. B. `92.*`) wird
-  automatisch in eine passende Regex (`^92\.`) umgewandelt.
-- **Root-Pflicht**: das Script bricht mit einer klaren Meldung ab, wenn es
-  nicht als root läuft.
-- **Source-Schutz**: das Script erkennt, wenn es versehentlich mit `source`
-  statt direkt ausgeführt wird, und bricht kontrolliert ab, statt
-  `set -euo pipefail` dauerhaft in die aufrufende Shell durchsickern zu
-  lassen (siehe Troubleshooting).
+- **Aggregation across all jails**: queries `fail2ban-client status` to
+  get the list of jails, then `fail2ban-client status <jail>` per jail
+  for the banned IPs.
+- **Sorting & deduplication**: output is sorted numerically by IP octet
+  (`92.9.x` before `92.10.x`) and duplicate entries are removed.
+  Sorting is octet-based, so it targets IPv4 addresses.
+- **Colored output**: only enabled when stdout is a terminal (no ANSI
+  escape-code clutter when redirected to a file or piped).
+- **Pattern filtering**: `-p` accepts POSIX extended regular
+  expressions. A simple shell-style pattern ending in `*` (e.g. `92.*`)
+  is automatically converted into a matching regex (`^92\.`).
+- **Root required**: the script exits with a clear message if it isn't
+  run as root.
+- **Source guard**: the script detects if it's accidentally `source`d
+  instead of executed directly, and aborts cleanly instead of letting
+  `set -euo pipefail` leak into the calling shell (see Troubleshooting).
 
 ## Troubleshooting
 
-### Tab-Completion zeigt Dateinamen/Verzeichnisinhalte statt Jail-Namen
+### Tab completion shows file/directory names instead of jail names
 
-Ursache: `/etc/bash_completion.d/f2ban-bans` enthält nicht die
-Completion-Datei, sondern versehentlich das Hauptscript (z. B. durch
-Verwechslung beim Kopieren).
+Cause: `/etc/bash_completion.d/f2ban-bans` doesn't contain the
+completion file but accidentally the main script (e.g. mixed up during
+copying).
 
-Prüfen:
+Check:
 ```bash
 head -5 /etc/bash_completion.d/f2ban-bans
 ```
-Steht dort `# f2ban-bans - listet gesperrte IPs...` statt
-`# Bash-Completion für f2ban-bans`, liegt die falsche Datei dort.
+If it shows `# f2ban-bans - list, filter, and unban...` instead of
+`# Bash completion for f2ban-bans`, the wrong file is in place.
 
-Beheben:
+Fix:
 ```bash
-sudo cp f2ban-bans-completion.bash /etc/bash_completion.d/f2ban-bans
+sudo install -o root -g root -m 644 f2ban-bans-completion.bash /etc/bash_completion.d/f2ban-bans
 source /etc/bash_completion.d/f2ban-bans
 ```
 
-### SSH-Session bricht ab mit „unbound variable" (z. B. `LC_BYOBU`)
+### SSH session dies with "unbound variable" (e.g. `LC_BYOBU`)
 
-Ursache: identisch zum obigen Punkt. Wird versehentlich das Hauptscript
-(mit `set -euo pipefail`) statt der Completion-Datei automatisch
-gesourced, bleibt `set -u` dauerhaft in der interaktiven Shell aktiv.
-Referenziert die Shell (oder z. B. byobu) danach eine nicht gesetzte
-Variable, terminiert `set -e` + `set -u` die Shell und damit die
-SSH-Session.
+Cause: same as above. If the main script (with `set -euo pipefail`) gets
+sourced automatically instead of the completion file, `set -u` stays
+active permanently in that interactive shell. The next time the shell
+(or something like byobu) references an unset variable, `set -e` +
+`set -u` terminate the shell - and with it the SSH session.
 
-Beheben: siehe oben. Ab der aktuellen Script-Version ist zusätzlich ein
-Source-Schutz eingebaut (`BASH_SOURCE[0]` vs. `$0`-Prüfung), der das
-Script bei einem `source`-Aufruf sofort mit einer Fehlermeldung
-abbricht, statt die Shell zu beeinflussen – als zweite Absicherung
-gegen genau dieses Problem.
+Fix: see above. As of the current script version there's an additional
+safeguard: a `BASH_SOURCE[0]` vs. `$0` check that makes the script abort
+immediately with an error message if it's ever sourced, instead of
+affecting the shell - a second line of defense against exactly this
+issue.
 
-### `fail2ban-client` nicht gefunden
+### `fail2ban-client` not found
 
 ```bash
 which fail2ban-client
 ```
-Falls leer: fail2ban ist nicht installiert, oder `/usr/bin` bzw. der
-entsprechende Pfad fehlt im `$PATH` von root.
+If empty: fail2ban isn't installed, or the relevant path is missing
+from root's `$PATH`.
 
-### „Dieses Script muss als root laufen"
+### "This script must be run as root"
 
-Mit `sudo f2ban-bans ...` aufrufen, oder als root einloggen.
+Call it with `sudo f2ban-bans ...`, or log in as root.
 
-## Deinstallation
+## Uninstall
 
 ```bash
 sudo rm -f /usr/local/sbin/f2ban-bans
 sudo rm -f /etc/bash_completion.d/f2ban-bans
 ```
 
-## Änderungshistorie
+## Changelog
 
-- Basis-Script: Statusabfrage über alle Jails, Regex-Filterung
-- `-j` Jail-Filter, `-c` Zählmodus
-- `-l` Auflistung aktiver Jails
-- `-u` direktes Entsperren einer IP
-- Numerische Sortierung + Deduplizierung der IP-Ausgabe
-- Farbige Terminal-Ausgabe (terminal-sensitiv)
-- Bash-Tab-Completion für Jail-Namen
-- Source-Schutz gegen versehentliches Einlesen in eine interaktive Shell
+See [CHANGELOG.md](CHANGELOG.md).
+
+## Contributing
+
+Issues and pull requests are welcome. Please run
+[ShellCheck](https://www.shellcheck.net/) on both scripts before opening a
+pull request - the same check runs automatically in CI:
+
+```bash
+shellcheck f2ban-bans
+shellcheck -s bash f2ban-bans-completion.bash
+```
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0** -
+see [LICENSE.md](LICENSE.md) for details.

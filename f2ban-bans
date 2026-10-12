@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 #
-# f2ban-bans - listet gesperrte IPs aus allen fail2ban-Jails auf, filtert sie
-#              und kann IPs direkt entsperren
+# f2ban-bans - list, filter, and unban banned IPs across all fail2ban jails
 #
-# Verwendung:
-#   f2ban-bans                  # alle gesperrten IPs, gruppiert nach Jail
-#   f2ban-bans -l                # aktive Jails auflisten (z. B. zur Auswahl für -j)
-#   f2ban-bans -p 92.           # nach Muster/Regex filtern (Präfix reicht)
-#   f2ban-bans -p '92.*'        # Shell-Style-Muster wird automatisch in Regex umgewandelt
-#   f2ban-bans -j sshd          # nur eine bestimmte Jail anzeigen
-#   f2ban-bans -j sshd -p 92.   # Jail + Muster kombinieren
-#   f2ban-bans -c               # nur Anzahl pro Jail anzeigen
-#   f2ban-bans -u 92.1.2.3       # IP aus allen Jails entsperren, in denen sie gesperrt ist
-#   f2ban-bans -u 92.1.2.3 -j sshd  # IP nur aus dieser Jail entsperren
+# Usage:
+#   f2ban-bans                      # all banned IPs, grouped by jail
+#   f2ban-bans -l                   # list active jails (e.g. to pick one for -j)
+#   f2ban-bans -p 92.               # filter by pattern/regex (a prefix is enough)
+#   f2ban-bans -p '92.*'            # shell-style pattern is auto-converted to regex
+#   f2ban-bans -j sshd              # show only a specific jail
+#   f2ban-bans -j sshd -p 92.       # combine jail + pattern
+#   f2ban-bans -c                   # show only the count per jail
+#   f2ban-bans -u 92.1.2.3          # unban this IP from every jail it's banned in
+#   f2ban-bans -u 92.1.2.3 -j sshd  # unban this IP only from the given jail
 #
-# Ausgabe ist automatisch sortiert (numerisch nach Oktetten) und dedupliziert.
-# Farbige Ausgabe nur, wenn stdout ein Terminal ist (kein ANSI-Müll bei Umleitung/Pipe).
+# Output is automatically sorted (numerically by octet) and deduplicated.
+# Colored output only when stdout is a terminal (no ANSI codes when piped/redirected).
 #
-# Muss als root laufen (fail2ban-client erfordert das).
+# Must be run as root (fail2ban-client requires it).
 
-# Schutz: darf nicht mit 'source'/'.' in eine interaktive Shell eingelesen werden
-# (sonst bleibt "set -u" dauerhaft aktiv und kann die Shell/SSH-Session zerschießen,
-# z. B. wenn diese Datei versehentlich unter /etc/bash_completion.d/ landet).
+# Guard: must not be sourced into an interactive shell
+# (otherwise "set -u" stays active permanently and can kill the shell/SSH
+# session - e.g. if this file accidentally ends up under /etc/bash_completion.d/).
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    echo "Dieses Script darf nicht mit 'source' aufgerufen werden - bitte direkt ausführen (z. B. f2ban-bans)." >&2
+    echo "This script must not be sourced - run it directly instead (e.g. f2ban-bans)." >&2
+    # shellcheck disable=SC2317  # 'exit' is the fallback when not inside a sourced context
     return 1 2>/dev/null || exit 1
 fi
 
@@ -35,7 +35,7 @@ COUNT_ONLY=0
 LIST_JAILS=0
 UNBAN_IP=""
 
-# Farben nur aktivieren, wenn die Ausgabe an ein Terminal geht
+# Enable colors only when output goes to a terminal
 if [[ -t 1 ]]; then
     C_RESET=$'\e[0m'
     C_BOLD=$'\e[1m'
@@ -48,14 +48,14 @@ else
 fi
 
 usage() {
-    echo "Verwendung: $(basename "$0") [-p Muster] [-j Jail] [-c] [-l] [-u IP] [-h]"
+    echo "Usage: $(basename "$0") [-p pattern] [-j jail] [-c] [-l] [-u IP] [-h]"
     echo
-    echo "  -p MUSTER    Gesperrte IPs per Regex filtern, z. B. '^92\.' oder '92.*'"
-    echo "  -j JAIL      Nur diese Jail statt aller Jails anzeigen/verwenden"
-    echo "  -c           Nur die Anzahl gesperrter IPs pro Jail ausgeben"
-    echo "  -l           Nur die aktiven Jails auflisten und beenden"
-    echo "  -u IP        Diese IP entsperren (alle Jails, oder nur -j Jail)"
-    echo "  -h           Diese Hilfe anzeigen"
+    echo "  -p PATTERN   Filter banned IPs by regex, e.g. '^92\.' or '92.*'"
+    echo "  -j JAIL      Only show/use this jail instead of all jails"
+    echo "  -c           Show only the number of banned IPs per jail"
+    echo "  -l           Only list active jails, then exit"
+    echo "  -u IP        Unban this IP (all jails, or only -j jail)"
+    echo "  -h           Show this help"
     exit 1
 }
 
@@ -67,35 +67,37 @@ while getopts ":p:j:clu:h" opt; do
         l) LIST_JAILS=1 ;;
         u) UNBAN_IP="$OPTARG" ;;
         h) usage ;;
-        \?) echo "Unbekannte Option: -$OPTARG" >&2; usage ;;
-        :) echo "Option -$OPTARG benötigt ein Argument." >&2; usage ;;
+        \?) echo "Unknown option: -$OPTARG" >&2; usage ;;
+        :) echo "Option -$OPTARG requires an argument." >&2; usage ;;
     esac
 done
 
 if [[ "$(id -u)" -ne 0 ]]; then
-    echo "Dieses Script muss als root laufen (sudo verwenden)." >&2
+    echo "This script must be run as root (use sudo)." >&2
     exit 1
 fi
 
 if ! command -v fail2ban-client >/dev/null 2>&1; then
-    echo "fail2ban-client wurde nicht gefunden. Ist fail2ban installiert?" >&2
+    echo "fail2ban-client not found. Is fail2ban installed?" >&2
     exit 1
 fi
 
 ALL_JAILS="$(fail2ban-client status | sed -n 's/^.*Jail list:[[:space:]]*//p' | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d')"
 
 if [[ "$LIST_JAILS" -eq 1 ]]; then
-    echo "${C_BOLD}Aktive Jails:${C_RESET}"
-    echo "$ALL_JAILS" | sed 's/^/  /'
+    echo "${C_BOLD}Active jails:${C_RESET}"
+    while IFS= read -r jail_name; do
+        echo "  $jail_name"
+    done <<< "$ALL_JAILS"
     exit 0
 fi
 
-# IPv4-Liste numerisch nach Oktetten sortieren und Duplikate entfernen
+# Sort a list of IPv4 addresses numerically by octet and remove duplicates
 sort_ips() {
     awk '!seen[$0]++' | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n
 }
 
-# Wandelt ein einfaches Shell-Muster wie "92.*" in eine brauchbare Regex um.
+# Converts a simple shell-style pattern like "92.*" into a usable regex.
 normalize_pattern() {
     local p="$1"
     if [[ "$p" == *'*' ]]; then
@@ -115,24 +117,24 @@ else
     JAILS="$ALL_JAILS"
 fi
 
-# --- IP entsperren und beenden ---
+# --- Unban an IP and exit ---
 if [[ -n "$UNBAN_IP" ]]; then
     FOUND=0
     for jail in $JAILS; do
         [[ -z "$jail" ]] && continue
         if fail2ban-client set "$jail" unbanip "$UNBAN_IP" >/dev/null 2>&1; then
-            echo "${C_GREEN}✓${C_RESET} $UNBAN_IP aus Jail '${C_BOLD}$jail${C_RESET}' entsperrt"
+            echo "${C_GREEN}✓${C_RESET} $UNBAN_IP unbanned from jail '${C_BOLD}$jail${C_RESET}'"
             FOUND=1
         fi
     done
     if [[ "$FOUND" -eq 0 ]]; then
-        echo "${C_RED}✗${C_RESET} $UNBAN_IP war in keiner geprüften Jail gesperrt." >&2
+        echo "${C_RED}✗${C_RESET} $UNBAN_IP was not banned in any checked jail." >&2
         exit 1
     fi
     exit 0
 fi
 
-# --- Normale Anzeige ---
+# --- Regular listing ---
 TOTAL=0
 
 for jail in $JAILS; do
@@ -140,7 +142,7 @@ for jail in $JAILS; do
 
     STATUS="$(fail2ban-client status "$jail" 2>/dev/null || true)"
     if [[ -z "$STATUS" ]]; then
-        echo "Jail '$jail' nicht gefunden, wird übersprungen." >&2
+        echo "Jail '$jail' not found, skipping." >&2
         continue
     fi
 
@@ -175,5 +177,5 @@ if [[ "$COUNT_ONLY" -eq 1 ]]; then
     echo "-----"
     printf "%-20s ${C_BOLD}%d${C_RESET}\n" "TOTAL" "$TOTAL"
 elif [[ "$TOTAL" -eq 0 ]]; then
-    echo "Keine gesperrten IPs gefunden (bei den gewählten Filtern)."
+    echo "No banned IPs found (with the selected filters)."
 fi
